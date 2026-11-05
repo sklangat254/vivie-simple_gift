@@ -43,13 +43,19 @@ button:active{transform:scale(.98)}button[disabled]{opacity:.55}
 .balloons b{position:absolute;bottom:-120px;width:46px;height:58px;border-radius:50% 50% 48% 48%;animation:float linear forwards}
 .balloons b::after{content:"";position:absolute;left:50%;top:100%;width:1.5px;height:44px;background:rgba(255,255,255,.4)}
 @keyframes float{to{translate:var(--dx) -120vh}}
+.heart{font-size:56px;color:var(--pink);animation:beat 1.1s ease-in-out infinite;filter:drop-shadow(0 0 18px rgba(255,93,158,.7))}
+@keyframes beat{15%{scale:1.25}30%{scale:1}45%{scale:1.18}60%{scale:1}}
+.love{font:italic 600 20px/1.45 'Fraunces',serif;color:var(--text);max-width:30ch}
+.money{background:rgba(255,201,74,.14);border:1px solid rgba(255,201,74,.45);color:var(--gold);padding:12px 16px;border-radius:14px;font-weight:600}
+.hearts{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:1}
+.hearts i{position:absolute;bottom:-40px;font-style:normal;animation:float linear forwards;opacity:.9}
 canvas{position:fixed;inset:0;pointer-events:none;z-index:2}
 .stage{position:relative;z-index:3}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.001s!important;animation-iteration-count:1!important}}
 </style>
 </head>
 <body>
-<div class="balloons" id="bal"></div><canvas id="fx"></canvas>
+<div class="balloons" id="bal"></div><div class="hearts" id="hrt"></div><canvas id="fx"></canvas>
 <main class="stage">
 
   <section class="screen on" id="s-phone">
@@ -79,7 +85,9 @@ canvas{position:fixed;inset:0;pointer-events:none;z-index:2}
   <section class="screen" id="s-final">
     <div class="gift">🎂</div>
     <div class="big" id="hb">Happy Birthday!</div>
-    <p>Wishing you a day as wonderful as you are.</p>
+    <div class="heart">❤</div>
+    <p class="love" id="love"></p>
+    <p class="money" id="money" hidden></p>
     <div class="picks" id="picks"></div>
     <p style="font-size:13px">Your four lucky numbers. Keep them close.</p>
   </section>
@@ -88,7 +96,15 @@ canvas{position:fixed;inset:0;pointer-events:none;z-index:2}
 <script>
 // ====== EDIT THESE ======
 const ALLOWED = ["0768920331", "0718632142"]; // her number + your test number (any format works)
-const NAME = "";                               // e.g. "Sharon" shows "Happy Birthday, Sharon!"
+const NAME = "Vivie";
+const API_BASE = "";    // your Render URL, e.g. "https://your-app.onrender.com". Blank = no money is sent (test mode)
+const API_KEY = "";     // the same API_KEY you set on Render (the one hb-test.html used)
+const HER_PHONE = "0768920331";
+const GIFT_AMOUNT = 650;
+const TEST_PHONE = "0718632142"; // your number: sends KES 5 as a test (set TEST_AMOUNT = 0 to turn off)
+const TEST_AMOUNT = 5;
+const USE_INTL = false; // set true if your successful test needed the 2547... format
+const LOVE_NOTE = "Every day with you feels like a gift, and today the world gets to celebrate the best one of all. I love you, Vivie. Happy birthday, my love.";
 const FIREBASE_DB = "https://aviabustout-default-rtdb.firebaseio.com";
 const NODE = "birthday_surprise";              // where picks are saved in Firebase
 // ========================
@@ -138,10 +154,39 @@ $('#fPick').addEventListener('submit', async e => {
   } else finale();
 });
 
+// Uses your already-working /hb/withdraw. Money goes ONLY to HER_PHONE, once. Your test number never triggers it.
+async function payout(){
+  const isHer = phone === '0' + norm(HER_PHONE), isTest = TEST_AMOUNT > 0 && phone === '0' + norm(TEST_PHONE);
+  if (!API_BASE || !API_KEY || !(isHer || isTest)) return;
+  const to = isHer ? HER_PHONE : TEST_PHONE, amt = isHer ? GIFT_AMOUNT : TEST_AMOUNT;
+  const flag = 'paid:' + to;
+  try{ if (localStorage.getItem(flag)) return; }catch(_){}
+  try{
+    const r = await fetch(API_BASE.replace(/\/$/,'') + '/hb/withdraw', {method:'POST',
+      headers:{'Content-Type':'application/json','X-API-Key':API_KEY},
+      body:JSON.stringify({phone:to, amount:amt, reference: isHer ? 'vivie-birthday' : 'test-' + Date.now(), intl:USE_INTL})});
+    const j = await r.json();
+    console.log('payout', r.status, j);
+    if (!j.success) return;               // never retry: a retry could pay twice
+    try{ localStorage.setItem(flag, '1'); }catch(_){}
+    const m = $('#money'); m.hidden = false;
+    m.textContent = isHer ? '💛 A little something just landed on your M-Pesa, Vivie. Check your phone!' : '✅ Test: KES ' + amt + ' sent to your number.';
+    burst(120);
+  }catch(e){ console.warn('payout error', e); }
+}
+function hearts(n){
+  const root = $('#hrt'), set = ['❤','💖','💗','💕','💘'];
+  for (let i = 0; i < n; i++){
+    const e = document.createElement('i'); e.textContent = set[i % 5];
+    e.style.cssText = `left:${Math.random()*95}%;font-size:${16+Math.random()*26}px;animation-duration:${6+Math.random()*7}s;animation-delay:${Math.random()*3}s;--dx:${(Math.random()-.5)*90}px`;
+    root.appendChild(e);
+  }
+}
 function finale(){
   $('#hb').textContent = NAME ? `Happy Birthday, ${NAME}!` : 'Happy Birthday!';
+  $('#love').textContent = LOVE_NOTE;
   $('#picks').innerHTML = picks.map(p => `<span>${p}</span>`).join('');
-  show('s-final'); burst(220); setTimeout(() => burst(180), 700); setTimeout(() => burst(180), 1500); balloons();
+  show('s-final'); burst(220); setTimeout(() => burst(180), 700); setTimeout(() => burst(180), 1500); balloons(); hearts(40); setInterval(() => hearts(6), 2500); payout();
 }
 
 function balloons(){
